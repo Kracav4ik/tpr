@@ -9,6 +9,7 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableModel;
 import javax.swing.text.NumberFormatter;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Array;
@@ -92,7 +93,12 @@ public class MainWindow {
             int ret = fileopen.showSaveDialog(null);
             if (ret == JFileChooser.APPROVE_OPTION) {
                 try {
-                    PrintWriter writer = new PrintWriter(fileopen.getSelectedFile());
+
+                    String selectedFile = fileopen.getSelectedFile().getPath();
+                    if (!selectedFile.endsWith(".mat")) {
+                        selectedFile += ".mat";
+                    }
+                    PrintWriter writer = new PrintWriter(selectedFile);
                     mat.print(writer, 1, 3);
                     writer.flush();
                 } catch (IOException er) {
@@ -197,6 +203,8 @@ public class MainWindow {
             public void setValueAt(Object aValue, int row, int col) {
                 result.set(row, col, (Double)aValue);
                 MatrixMethods.fixMatrix(result);
+                calcResult(result);
+                clickAll();
                 fireTableCellUpdated(row, col);
                 fireTableCellUpdated(col, row);
             }
