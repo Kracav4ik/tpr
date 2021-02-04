@@ -1,21 +1,22 @@
 package tpr;
 
 import Jama.Matrix;
+import javafx.util.Pair;
 
 import javax.swing.*;
-import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableModel;
 import javax.swing.text.NumberFormatter;
+import java.awt.*;
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.lang.reflect.Array;
 import java.nio.file.Files;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.stream.Stream;
 
 
 public class MainWindow {
@@ -29,17 +30,60 @@ public class MainWindow {
     private JTable newEigVec;
     private JButton perturb;
     private JSpinner perturbPercent;
-    private JButton testStability;
-    private JSpinner iterationCount;
     private JTextField lambdaOrig;
     private JTextField consistencyOrig;
-    private JTextField lambdaModified;
-    private JTextField consistencyModified;
-    private JTextField testReport;
-    private JButton randomizeMatrix;
-    private Matrix mat;
+    private JButton savePerturbMatrix;
+    private MatrixModel mat;
+    private MatrixModel matMin;
+    private MatrixModel matMax;
 
     public MainWindow() {
+        mat = new MatrixModel(new Matrix(10, 10, 1), 3);
+        matMin = new MatrixModel(new Matrix(10, 10, 1), 3);
+        matMax = new MatrixModel(new Matrix(10, 10, 1), 3);
+
+        origTable.setDefaultRenderer(String.class, new DefaultTableCellRenderer() {
+            final Color backgroundColor = getBackground();
+
+            public Component getTableCellRendererComponent(
+                    JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(
+                        table, value, isSelected, hasFocus, row, column);
+
+                if (isSelected) {
+                    return c;
+                }
+                if (mat.getMatPairs().contains(new Pair<>(row, column))) {
+                    c.setBackground(Color.green.darker());
+                } else {
+                    c.setBackground(backgroundColor);
+                }
+                return c;
+            }
+        });
+
+        modifiedTable.setDefaultRenderer(String.class, new DefaultTableCellRenderer() {
+            final Color backgroundColor = getBackground();
+
+            public Component getTableCellRendererComponent(
+                    JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(
+                        table, value, isSelected, hasFocus, row, column);
+
+                if (isSelected) {
+                    return c;
+                }
+                if (mat.getMatPairs().contains(new Pair<>(row, column))) {
+                    c.setBackground(Color.green.darker());
+                } else {
+                    c.setBackground(backgroundColor);
+                }
+                return c;
+            }
+        });
+
         SpinnerNumberModel dimensionModel = (SpinnerNumberModel)dimension.getModel();
         dimensionModel.setValue(3);
         dimensionModel.setMinimum(2);
@@ -54,31 +98,25 @@ public class MainWindow {
         perturbPercentModel.setMaximum(90.0);
         perturbPercentModel.setStepSize(0.1);
 
-        SpinnerNumberModel iterationCountModel = (SpinnerNumberModel)iterationCount.getModel();
-        iterationCountModel.setValue(100);
-        iterationCountModel.setMinimum(1);
-        iterationCountModel.setMaximum(9999);
-
         lambdaOrig.setBorder(null);
         consistencyOrig.setBorder(null);
-        lambdaModified.setBorder(null);
-        consistencyModified.setBorder(null);
-        testReport.setBorder(null);
 
-        randomizeMatrix.addActionListener(e -> {
-            calcResult(MatrixMethods.generation(1, 9, (Integer) dimension.getValue()));
+        dimension.addChangeListener(e -> {
+            mat.setSize((Integer)dimension.getValue());
+            matMin.setSize((Integer)dimension.getValue());
+            matMax.setSize((Integer)dimension.getValue());
+            calcResult(mat.getMat());
             clickAll();
         });
+
         openMatrix.addActionListener(e -> {
             JFileChooser fileopen = new JFileChooser(".");
-            FileNameExtensionFilter filter = new FileNameExtensionFilter("Матрица(*.mat)", "mat");
             fileopen.setAcceptAllFileFilterUsed(false);
-            fileopen.setFileFilter(filter);
             int ret = fileopen.showOpenDialog(null);
             if (ret == JFileChooser.APPROVE_OPTION) {
                 try (BufferedReader bf = Files.newBufferedReader(fileopen.getSelectedFile().toPath())) {
                     calcResult(Matrix.read(bf));
-                    dimension.setValue(mat.getRowDimension());
+                    dimension.setValue(mat.getSize());
                     clickAll();
                 } catch (IOException er) {
                     System.err.format("IOException: %s%n", er);
@@ -87,19 +125,44 @@ public class MainWindow {
         });
         saveMatrix.addActionListener(e -> {
             JFileChooser fileopen = new JFileChooser(".");
-            FileNameExtensionFilter filter = new FileNameExtensionFilter("Матрица(*.mat)", "mat");
             fileopen.setAcceptAllFileFilterUsed(false);
-            fileopen.setFileFilter(filter);
             int ret = fileopen.showSaveDialog(null);
             if (ret == JFileChooser.APPROVE_OPTION) {
                 try {
-
                     String selectedFile = fileopen.getSelectedFile().getPath();
-                    if (!selectedFile.endsWith(".mat")) {
-                        selectedFile += ".mat";
-                    }
                     PrintWriter writer = new PrintWriter(selectedFile);
-                    mat.print(writer, 1, 3);
+                    mat.getMat().print(writer, 1, 3);
+                    writer.flush();
+                } catch (IOException er) {
+                    System.err.format("IOException: %s%n", er);
+                }
+            }
+        });
+
+        savePerturbMatrix.addActionListener(e -> {
+            JFileChooser fileopen = new JFileChooser(".");
+            fileopen.setAcceptAllFileFilterUsed(false);
+            int ret = fileopen.showSaveDialog(null);
+            if (ret == JFileChooser.APPROVE_OPTION) {
+                try {
+                    String selectedFile = fileopen.getSelectedFile().getPath();
+                    PrintWriter writer = new PrintWriter(selectedFile);
+                    int count = matMin.getSize();
+                    StringBuilder result = new StringBuilder();
+                    for (int i = 0; i < count; ++i) {
+                        if (i != 0) result.append("\n");
+                        for (int j = 0; j < count; j++) {
+                            if (j != 0) result.append("\t");
+                            double min = matMin.getMat().get(i, j);
+                            double max = matMax.getMat().get(i, j);
+                            if (min == max) {
+                                result.append(String.format("%.3f", min));
+                            } else {
+                                result.append(String.format("%.3f-%.3f", min, max));
+                            }
+                        }
+                    }
+                    writer.write(result.toString());
                     writer.flush();
                 } catch (IOException er) {
                     System.err.format("IOException: %s%n", er);
@@ -108,54 +171,31 @@ public class MainWindow {
         });
 
         perturb.addActionListener(e -> {
-            Matrix result = MatrixMethods.perturbMatrix(mat, (Double) perturbPercent.getValue() / 100);
-            Matrix resultEigen = MatrixMethods.getMaxEigenVec(result);
-            newEigVec.setModel(getTableModel(resultEigen, false));
-            double resultMaxEigenVal = MatrixMethods.getMaxEigenVal(result);
-            modifiedTable.setModel(getTableModel(result, false));
-            lambdaModified.setText(String.format("%.3f", resultMaxEigenVal));
-            consistencyModified.setText(String.format("%.3f", ((resultMaxEigenVal - result.getRowDimension()) / (result.getRowDimension() - 1))));
+            double perturb = (Double) perturbPercent.getValue() / 100;
+            matMax.setMat(MatrixMethods.perturbMatrix(mat, perturb));
+            matMin.setMat(MatrixMethods.perturbMatrix(mat, -perturb));
+            Matrix matEigenMin = MatrixMethods.getMaxEigenVec(matMin.getMat());
+            Matrix matEigenMax = MatrixMethods.getMaxEigenVec(matMax.getMat());
+            newEigVec.setModel(getTableModel(matEigenMin, matEigenMax, false));
+            modifiedTable.setModel(getTableModel(matMin.getMat(), matMax.getMat(), false));
         });
-
-        testStability.addActionListener(e -> {
-            Integer size = (Integer)iterationCount.getValue();
-            double avg = 0;
-            double sd = 0;
-            Matrix matMaxEigen = MatrixMethods.getMaxEigenVec(mat);
-            for (int i = 0; i < size; i++) {
-                Matrix result = MatrixMethods.perturbMatrix(mat, (Double) perturbPercent.getValue() / 100);
-                Matrix resultEigen = MatrixMethods.getMaxEigenVec(result);
-                double diff = (matMaxEigen.minus(resultEigen)).normF();
-                sd += diff * diff / size;
-                avg += diff / size;
-            }
-            sd -= avg*avg;
-
-            testReport.setText(String.format("Средняя норма отклонения вектора приоритетов %.3f%%, дисперсия %.3f%%", avg * 100, sd * 100));
-        });
-
-        randomizeMatrix.doClick();
+        calcResult(mat.getMat());
+        clickAll();
     }
 
     private void clickAll() {
         perturb.doClick();
-        testStability.doClick();
     }
 
     private void calcResult(Matrix input) {
-        mat = input;
-        MatrixMethods.fixMatrix(mat);
-        double matMaxEigenVal = MatrixMethods.getMaxEigenVal(mat);
-        Matrix matEigen = MatrixMethods.getMaxEigenVec(mat);
-        oldEigVec.setModel(getTableModel(matEigen, false));
+        mat.setMat(input);
+        double matMaxEigenVal = MatrixMethods.getMaxEigenVal(mat.getMat());
+        Matrix matEigen = MatrixMethods.getMaxEigenVec(mat.getMat());
+        oldEigVec.setModel(getTableModel(matEigen, matEigen, false));
         newEigVec.setModel(new DefaultTableModel());
-        modifiedTable.setModel(new DefaultTableModel());
-        origTable.setModel(getTableModel(mat, true));
+        origTable.setModel(getTableModel(mat.getMat(), mat.getMat(), true));
         lambdaOrig.setText(String.format("%.3f", matMaxEigenVal));
-        consistencyOrig.setText(String.format("%.3f", (matMaxEigenVal - mat.getRowDimension()) / (mat.getRowDimension() - 1)));
-        lambdaModified.setText("");
-        consistencyModified.setText("");
-        testReport.setText("");
+        consistencyOrig.setText(String.format("%.3f", (matMaxEigenVal - mat.getSize()) / (mat.getSize() - 1)));
     }
 
     private static void setLocaleConstants() {
@@ -193,17 +233,28 @@ public class MainWindow {
         UIManager.put("FileChooser.viewMenuLabelText", "Вид");
     }
 
-    private TableModel getTableModel(Matrix result, boolean editable) {
+    private TableModel getTableModel(Matrix resultMin, Matrix resultMax, boolean editable) {
         return new AbstractTableModel() {
-            public int getColumnCount() { return result.getColumnDimension(); }
-            public int getRowCount() { return result.getRowDimension();}
-            public Object getValueAt(int row, int col) { return result.get(row, col); }
-            public Class<?> getColumnClass(int col) { return Double.class; }
-            public boolean isCellEditable(int row, int col) { return editable && col > row; }
+            public int getColumnCount() { return resultMin.getColumnDimension(); }
+            public int getRowCount() { return resultMin.getRowDimension();}
+            public Object getValueAt(int row, int col) {
+                double min = resultMin.get(row, col);
+                double max = resultMax.get(row, col);
+
+                if (min == max) {
+                    return String.format("%.3f", min);
+                } else {
+                    return String.format("%.3f-%.3f", min, max);
+                }
+            }
+            public Class<?> getColumnClass(int col) { return String.class; }
+            public boolean isCellEditable(int row, int col) { return editable && row != col; }
             public void setValueAt(Object aValue, int row, int col) {
-                result.set(row, col, (Double)aValue);
-                MatrixMethods.fixMatrix(result);
-                calcResult(result);
+                double value = Double.parseDouble(aValue.toString().replace(",", "."));
+                if (value <= 0) return;
+                resultMin.set(row, col, value);
+                resultMin.set(col, row, 1 / value);
+                calcResult(resultMin);
                 clickAll();
                 fireTableCellUpdated(row, col);
                 fireTableCellUpdated(col, row);
