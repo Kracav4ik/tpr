@@ -7,9 +7,29 @@ import Jama.Matrix;
 
 import javafx.util.Pair;
 import java.util.Set;
+import java.util.ArrayList;
 
 public class MatrixMethods {
 
+    public static ArrayList<RangeArithmetic> getRangeEigen(Matrix inputMin, Matrix inputMax) {
+        ArrayList<RangeArithmetic> result = new ArrayList<>();
+        for (int i = 0; i < inputMin.getRowDimension(); i++) {
+            RangeArithmetic toAdd = new RangeArithmetic(1, 1);
+            for (int j = 0; j < inputMin.getColumnDimension(); j++) {
+                toAdd.mul(new RangeArithmetic(inputMin.get(i, j), inputMax.get(i, j)));
+            }
+            result.add(toAdd.invertPow(inputMin.getRowDimension()));
+        }
+        RangeArithmetic norm = new RangeArithmetic(0, 0);
+        for (RangeArithmetic el : result) {
+            norm.plus(el);
+        }
+        for (int k = 0; k < inputMin.getRowDimension(); k++) {
+            result.set(k, result.get(k).divide(norm));
+        }
+
+        return result;
+    }
     public static Set<Pair<Integer, Integer>> getUpPairs(Integer size) {
         Set<Pair<Integer, Integer>> res = new HashSet<>();
 
@@ -53,8 +73,7 @@ public class MatrixMethods {
         return max;
     }
 
-    public static Matrix perturbMatrix(MatrixModel input, double perturbPercent) {
-        Random random = new Random();
+    public static Matrix perturbMatrix(MatrixModel input, double perturbPercent, boolean isMin) {
         int size = input.getSize();
 
         Matrix A = new Matrix(size, size, 1);
@@ -67,8 +86,17 @@ public class MatrixMethods {
                 continue;
             }
 
-            A.set(k, v, (1 + perturbPercent) * input.getMat().get(k, v));
-            A.set(v, k, 1 / A.get(k, v));
+            double v1 = (1 + perturbPercent) * input.getMat().get(k, v);
+            double v2 = (1 - perturbPercent) * input.getMat().get(k, v);
+            double v3 = 1 / v1;
+            double v4 = 1 / v2;
+            if (isMin) {
+                A.set(k, v, Math.min(v1, v2));
+                A.set(v, k, Math.min(v3, v4));
+            } else {
+                A.set(k, v, Math.max(v1, v2));
+                A.set(v, k, Math.max(v3, v4));
+            }
         }
 
         return A;

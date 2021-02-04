@@ -16,18 +16,16 @@ public class MatrixModel {
         size = newMat.getRowDimension();
         for (int i = 0; i < newMat.getRowDimension(); i++) {
             for (int j = i + 1; j < newMat.getColumnDimension(); j++) {
-                double val = newMat.get(i, j);
+                double val1 = newMat.get(i, j);
+                double val2 = newMat.get(j, i);
 
-                if (val >= 1) {
+                if (val1 >= 1 && val2 <= 1) {
                     updatePair(new Pair<>(i, j));
-                    mat.set(i, j, val);
-                    mat.set(j, i, 1 / val);
                 } else {
                     updatePair(new Pair<>(j, i));
-                    val = newMat.get(j, i);
-                    mat.set(j, i, val);
-                    mat.set(i, j, 1 / val);
                 }
+                mat.set(i, j, val1);
+                mat.set(j, i, val2);
             }
         }
     }

@@ -152,14 +152,10 @@ public class MainWindow {
                     for (int i = 0; i < count; ++i) {
                         if (i != 0) result.append("\n");
                         for (int j = 0; j < count; j++) {
-                            if (j != 0) result.append("\t");
+                            if (j != 0) result.append(" ");
                             double min = matMin.getMat().get(i, j);
                             double max = matMax.getMat().get(i, j);
-                            if (min == max) {
-                                result.append(String.format("%.3f", min));
-                            } else {
-                                result.append(String.format("%.3f-%.3f", min, max));
-                            }
+                            result.append(String.format("%.3f-%.3f", min, max).replace(",", "."));
                         }
                     }
                     writer.write(result.toString());
@@ -172,10 +168,18 @@ public class MainWindow {
 
         perturb.addActionListener(e -> {
             double perturb = (Double) perturbPercent.getValue() / 100;
-            matMax.setMat(MatrixMethods.perturbMatrix(mat, perturb));
-            matMin.setMat(MatrixMethods.perturbMatrix(mat, -perturb));
-            Matrix matEigenMin = MatrixMethods.getMaxEigenVec(matMin.getMat());
-            Matrix matEigenMax = MatrixMethods.getMaxEigenVec(matMax.getMat());
+            matMax.setMat(MatrixMethods.perturbMatrix(mat, perturb, false));
+            matMin.setMat(MatrixMethods.perturbMatrix(mat, perturb, true));
+            ArrayList<RangeArithmetic> rangeEigen = MatrixMethods.getRangeEigen(matMin.getMat(), matMax.getMat());
+
+            Matrix matEigenMin = new Matrix(rangeEigen.size(), 1);
+            Matrix matEigenMax = new Matrix(rangeEigen.size(), 1);
+
+            for (int i = 0; i < rangeEigen.size(); i++) {
+                matEigenMin.set(i, 0, rangeEigen.get(i).getMin());
+                matEigenMax.set(i, 0, rangeEigen.get(i).getMax());
+            }
+
             newEigVec.setModel(getTableModel(matEigenMin, matEigenMax, false));
             modifiedTable.setModel(getTableModel(matMin.getMat(), matMax.getMat(), false));
         });
