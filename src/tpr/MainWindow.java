@@ -16,6 +16,8 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Stream;
 
 
@@ -36,8 +38,10 @@ public class MainWindow {
     private MatrixModel mat;
     private MatrixModel matMin;
     private MatrixModel matMax;
+    private Set<Pair<Integer, Integer>> matPairs;
 
     public MainWindow() {
+        matPairs = new HashSet<>();
         mat = new MatrixModel(new Matrix(10, 10, 1), 3);
         matMin = new MatrixModel(new Matrix(10, 10, 1), 3);
         matMax = new MatrixModel(new Matrix(10, 10, 1), 3);
@@ -75,7 +79,7 @@ public class MainWindow {
                 if (isSelected) {
                     return c;
                 }
-                if (mat.getMatPairs().contains(new Pair<>(row, column))) {
+                if (matPairs.contains(new Pair<>(row, column))) {
                     c.setBackground(Color.green.darker());
                 } else {
                     c.setBackground(backgroundColor);
@@ -106,7 +110,7 @@ public class MainWindow {
             matMin.setSize((Integer)dimension.getValue());
             matMax.setSize((Integer)dimension.getValue());
             calcResult(mat.getMat());
-            clickAll();
+            modifiedTable.setModel(getTableModel(matMin.getMat(), matMax.getMat(), true, true));
         });
 
         openMatrix.addActionListener(e -> {
@@ -167,6 +171,8 @@ public class MainWindow {
         });
 
         perturb.addActionListener(e -> {
+            matPairs.clear();
+            matPairs.addAll(mat.getMatPairs());
             double perturb = (Double) perturbPercent.getValue() / 100;
             matMax.setMat(MatrixMethods.perturbMatrix(mat, perturb, false));
             matMin.setMat(MatrixMethods.perturbMatrix(mat, perturb, true));
@@ -180,8 +186,8 @@ public class MainWindow {
                 matEigenMax.set(i, 0, rangeEigen.get(i).getMax());
             }
 
-            newEigVec.setModel(getTableModel(matEigenMin, matEigenMax, false));
-            modifiedTable.setModel(getTableModel(matMin.getMat(), matMax.getMat(), false));
+            newEigVec.setModel(getTableModel(matEigenMin, matEigenMax, false, false));
+            modifiedTable.setModel(getTableModel(matMin.getMat(), matMax.getMat(), true, true));
         });
         calcResult(mat.getMat());
         clickAll();
@@ -195,9 +201,8 @@ public class MainWindow {
         mat.setMat(input);
         double matMaxEigenVal = MatrixMethods.getMaxEigenVal(mat.getMat());
         Matrix matEigen = MatrixMethods.getMaxEigenVec(mat.getMat());
-        oldEigVec.setModel(getTableModel(matEigen, matEigen, false));
-        newEigVec.setModel(new DefaultTableModel());
-        origTable.setModel(getTableModel(mat.getMat(), mat.getMat(), true));
+        oldEigVec.setModel(getTableModel(matEigen, matEigen, false, false));
+        origTable.setModel(getTableModel(mat.getMat(), mat.getMat(), true, false));
         lambdaOrig.setText(String.format("%.3f", matMaxEigenVal));
         consistencyOrig.setText(String.format("%.3f", (matMaxEigenVal - mat.getSize()) / (mat.getSize() - 1)));
     }
@@ -237,7 +242,7 @@ public class MainWindow {
         UIManager.put("FileChooser.viewMenuLabelText", "Вид");
     }
 
-    private TableModel getTableModel(Matrix resultMin, Matrix resultMax, boolean editable) {
+    private TableModel getTableModel(Matrix resultMin, Matrix resultMax, boolean editable,  boolean ranged) {
         return new AbstractTableModel() {
             public int getColumnCount() { return resultMin.getColumnDimension(); }
             public int getRowCount() { return resultMin.getRowDimension();}
@@ -254,12 +259,58 @@ public class MainWindow {
             public Class<?> getColumnClass(int col) { return String.class; }
             public boolean isCellEditable(int row, int col) { return editable && row != col; }
             public void setValueAt(Object aValue, int row, int col) {
-                double value = Double.parseDouble(aValue.toString().replace(",", "."));
-                if (value <= 0) return;
-                resultMin.set(row, col, value);
-                resultMin.set(col, row, 1 / value);
-                calcResult(resultMin);
-                clickAll();
+                if (ranged) {
+                    String val = aValue.toString();
+                    double min;
+                    double max;
+                    if (val.contains("-")) {
+                        String[] vals = val.split("-");
+                        try {
+                            min = Double.parseDouble(vals[0].trim().replace(",", "."));
+                            max = Double.parseDouble(vals[1].trim().replace(",", "."));
+                        } catch (NumberFormatException e) {
+                            return;
+                        }
+                    } else {
+                        try {
+                            min = Double.parseDouble(val);
+                            max = min;
+                        } catch (NumberFormatException e) {
+                            return;
+                        }
+                    }
+                    if (min > max) {
+                        return;
+                    }
+                    resultMin.set(row, col, min);
+                    resultMin.set(col, row, 1 / max);
+                    resultMax.set(row, col, max);
+                    resultMax.set(col, row, 1 / min);
+                    matMax.setMat(resultMax);
+                    matMin.setMat(resultMin);
+
+                    ArrayList<RangeArithmetic> rangeEigen = MatrixMethods.getRangeEigen(resultMin, resultMax);
+
+                    Matrix matEigenMin = new Matrix(rangeEigen.size(), 1);
+                    Matrix matEigenMax = new Matrix(rangeEigen.size(), 1);
+
+                    for (int i = 0; i < rangeEigen.size(); i++) {
+                        matEigenMin.set(i, 0, rangeEigen.get(i).getMin());
+                        matEigenMax.set(i, 0, rangeEigen.get(i).getMax());
+                    }
+
+                    matPairs.remove(new Pair<>(col, row));
+                    matPairs.add(new Pair<>(row, col));
+
+                    newEigVec.setModel(getTableModel(matEigenMin, matEigenMax, false, false));
+
+                } else {
+                    double value = Double.parseDouble(aValue.toString().replace(",", "."));
+                    if (value <= 0) return;
+                    resultMin.set(row, col, value);
+                    resultMin.set(col, row, 1 / value);
+                    calcResult(resultMin);
+                }
                 fireTableCellUpdated(row, col);
                 fireTableCellUpdated(col, row);
             }
